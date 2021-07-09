@@ -137,6 +137,10 @@ sudo nano /etc/httpd/sites-available/domain.org.conf
     DocumentRoot /var/www/domain.org/html
     ErrorLog /var/www/domain.org/log/error.log
     CustomLog /var/www/domain.org/log/requests.log combined
+
+    <Directory /var/www/domain.org/html>
+        AllowOverride All
+    </Directory>
 </VirtualHost>
 ```
 
@@ -543,6 +547,11 @@ passwd
 
 ### 18. Установим сертификат Let's Encrypt для домена
 
+установим Mod SSL
+```
+sudo yum install mod_ssl
+```
+
 установим Acme.sh
 ```
 curl https://get.acme.sh | sh
@@ -565,8 +574,47 @@ acme.sh --issue -d domain.org -d *.domain.org --dns  --yes-I-know-dns-manual-mod
 acme.sh --renew -d domain.org -d *.domain.org --dns  --yes-I-know-dns-manual-mode-enough-go-ahead-please --force
 ```
 
+в итоге у нас появились файлы сертификата по адресу `/root/.acme.sh/domain.org`
+
+важно: SELinux запретит доступ к файлам сертификата и зарегистрирует ошибку, поскольку каталог и файлы имеют неправильный контекст безопасности, установим правильный тип контекста безопасности:
+```
+chcon -Rv --type=httpd_sys_content_t /root/.acme.sh/domain.org
+```
+-R - рекурсивно
+
+далее
+```
+sudo nano /etc/httpd/sites-available/domain.org.conf
+```
+
+добавим следующий блок:
+```
+<VirtualHost *:443>
+    ServerName domain.org
+    ServerAlias www.domain.org
+    DocumentRoot /var/www/domain.org/html
+    ErrorLog /var/www/domain.org/log/error.log
+    CustomLog /var/www/domain.org/log/requests.log combined
+
+    SSLEngine On
+    SSLCertificateFile /root/.acme.sh/domain.org/domain.org.cer
+    SSLCertificateKeyFile /root/.acme.sh/domain.org/domain.org.key
+    SSLCertificateChainFile /root/.acme.sh/domain.org/fullchain.cer
+
+    <Directory /var/www/domain.org/html>
+        AllowOverride All
+    </Directory>
+</VirtualHost>
+```
+
+```
+sudo systemctl restart httpd
+```
+
 
 ### 19. Создание поддомена
+
+если нужно немного поддоменов, то для каждого можно сделать так:
 
 создадим папку
 ```
@@ -578,7 +626,7 @@ mkdir /var/www/domain.org/html/subdomain
 sudo nano /etc/httpd/sites-available/domain.org.conf
 ```
 
-добавим следующий блок:
+добавим следующие блок:
 ```
 <VirtualHost *:80>
     ServerName subdomain.domain.org
@@ -586,6 +634,28 @@ sudo nano /etc/httpd/sites-available/domain.org.conf
     DocumentRoot /var/www/domain.org/html/subdomain
     ErrorLog /var/www/domain.org/log/subdomain.error.log
     CustomLog /var/www/domain.org/log/subdomain.requests.log combined
+
+    <Directory /var/www/domain.org/html/subdomain>
+        AllowOverride All
+    </Directory>
+</VirtualHost>
+```
+```
+<VirtualHost *:443>
+    ServerName subdomain.domain.org
+    ServerAlias www.subdomain.domain.org
+    DocumentRoot /var/www/domain.org/html/subdomain
+    ErrorLog /var/www/domain.org/log/subdomain.error.log
+    CustomLog /var/www/domain.org/log/subdomain.requests.log combined
+
+    SSLEngine On
+    SSLCertificateFile /root/.acme.sh/domain.org/domain.org.cer
+    SSLCertificateKeyFile /root/.acme.sh/domain.org/domain.org.key
+    SSLCertificateChainFile /root/.acme.sh/domain.org/fullchain.cer
+
+    <Directory /var/www/domain.org/html/subdomain>
+        AllowOverride All
+    </Directory>
 </VirtualHost>
 ```
 
